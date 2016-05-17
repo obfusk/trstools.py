@@ -68,16 +68,17 @@ class Function(object):                                         # {{{1
   """..."""
 
   def __init__(self, name, *args):
-    self.name = name
-    self.args = args
+    self.name = name; self.args = args
 
   def __repr__(self):
     return self.name + "(" + ",".join(map(repr, self.args)) + ")"
 
   def __eq__(self, rhs):
-    if not isinstance(rhs, Function): return False
+    if not isfunc(rhs): return False
     return self.name == rhs.name and self.args == rhs.args
                                                                 # }}}1
+
+def isfunc(x): return isinstance(x, Function)
 
 class Variable(object):                                         # {{{1
   """..."""
@@ -89,9 +90,11 @@ class Variable(object):                                         # {{{1
     return self.name
 
   def __eq__(self, rhs):
-    if not isinstance(rhs, Variable): return False
+    if not isvar(rhs): return False
     return self.name == rhs.name
                                                                 # }}}1
+
+def isvar(x): return isinstance(x, Variable)
 
 class Rule(object):                                             # {{{1
   """..."""
@@ -119,19 +122,23 @@ class Ruleset(object):                                          # {{{1
     return self._rules
                                                                 # }}}1
 
-def term(parseresult):
-  """Turns parse result into a nested Function/Variable tree."""
-  if "varname" in parseresult:
-    return Variable(parseresult.varname)
-  return Function(parseresult.funcname,
-                  *map(term, parseresult.subterms))
+def term(x):                                                    # {{{1
+  """Turns string or parse result into a nested Function/Variable
+  tree."""
 
-def parse_term(t, fun = FUNCTIONS, var = VARIABLES):            # {{{1
+  if isfunc(x) or isvar(x): return x
+  elif isinstance(x, P.ParseResults):
+    if "varname" in x: return Variable(x.varname)
+    return Function(x.funcname, *map(term, x.subterms))
+  else: return term(parse_term(x))
+                                                                # }}}1
+
+def parse_term(t, func = FUNCTIONS, var = VARIABLES):           # {{{1
   r"""
-  Parses a term; returns nested Function/Variable tree.
+  Parses a term.
 
   >>> import trstools as T
-  >>> t1  = T.parse_term("f(g(h(x)),y)")
+  >>> t1  = T.term("f(g(h(x)),y)")
   >>> f,v = T.Function, T.Variable
   >>> t2  = f("f",f("g",f("h",v("x"))),v("y"))
   >>> t1 == t2
@@ -139,20 +146,18 @@ def parse_term(t, fun = FUNCTIONS, var = VARIABLES):            # {{{1
   """
 
   lp, rp  = P.Literal("("), P.Literal(")")
-  fu, va  = fun("funcname"), var("varname")
+  fu, va  = func("funcname"), var("varname")
   expr    = P.Forward()
   st      = P.delimitedList(P.Group(expr), ",")
   expr << ( va | fu + lp + P.Optional(st("subterms")) + rp )
-  return term(expr.parseString(t))
+  return expr.parseString(t)
                                                                 # }}}1
 
 def rule(l, r = None):
   """..."""
-  if isinstance(l, rule):
-    return l
-  if r is None:
-    l, r = l.split("->")
-  return Rule(parse_term(l), parse_term(r))
+  if isinstance(l, Rule): return l
+  if r is None: l, r = l.split("->")
+  return Rule(term(l), term(r))
 
 def ruleset():
   """..."""
