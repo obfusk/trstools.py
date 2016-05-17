@@ -28,7 +28,7 @@ Examples
 
 from __future__ import print_function
 
-import argparse, pyparsing, sys
+import argparse, pyparsing as P, sys
 
 if sys.version_info.major == 2:                                 # {{{1
   pass
@@ -61,17 +61,22 @@ def argument_parser():                                          # {{{1
   return p
                                                                 # }}}1
 
+FUNCTIONS = P.Word("fgh", P.alphas + "'")
+VARIABLES = P.Word("xyz", P.alphas + "'")
+
 class Function(object):                                         # {{{1
   """..."""
 
-  def __init__(self, name):
+  def __init__(self, name, *args):
     self.name = name
-
-  def __str__(self):
-    return self.name
+    self.args = args
 
   def __repr__(self):
-    return "<fun>" + self.name
+    return self.name + "(" + ",".join(map(repr, self.args)) + ")"
+
+  def __eq__(self, rhs):
+    if not isinstance(rhs, Function): return False
+    return self.name == rhs.name and self.args == rhs.args
                                                                 # }}}1
 
 class Variable(object):                                         # {{{1
@@ -80,43 +85,74 @@ class Variable(object):                                         # {{{1
   def __init__(self, name):
     self.name = name
 
-  def __str__(self):
+  def __repr__(self):
     return self.name
 
-  def __repr__(self):
-    return "<var>" + self.name
-
-                                                                # }}}1
-
-class Term(object):                                             # {{{1
-  """..."""
-
-  def __init__():
-    pass
-
+  def __eq__(self, rhs):
+    if not isinstance(rhs, Variable): return False
+    return self.name == rhs.name
                                                                 # }}}1
 
 class Rule(object):                                             # {{{1
   """..."""
 
-  def __init__():
-    pass
+  def __init__(self, l, r):
+    self._l = l; self._r = r
 
+  @property
+  def left(self):
+    return self.l
+
+  @property
+  def right(self):
+    return self.r
                                                                 # }}}1
 
 class Ruleset(object):                                          # {{{1
   """..."""
 
-  def __init__():
-    pass
+  def __init__(*rules):
+    self._rules = tuple(map(rule, rules))
 
+  @property
+  def rules(self):
+    return self._rules
                                                                 # }}}1
 
-def parse_term():
-  """..."""
+def term(parseresult):
+  """Turns parse result into a nested Function/Variable tree."""
+  if "varname" in parseresult:
+    return Variable(parseresult.varname)
+  return Function(parseresult.funcname,
+                  *map(term, parseresult.subterms))
 
-def rule():
+def parse_term(t, fun = FUNCTIONS, var = VARIABLES):            # {{{1
+  r"""
+  Parses a term; returns nested Function/Variable tree.
+
+  >>> import trstools as T
+  >>> t1  = T.parse_term("f(g(h(x)),y)")
+  >>> f,v = T.Function, T.Variable
+  >>> t2  = f("f",f("g",f("h",v("x"))),v("y"))
+  >>> t1 == t2
+  True
+  """
+
+  lp, rp  = P.Literal("("), P.Literal(")")
+  fu, va  = fun("funcname"), var("varname")
+  expr    = P.Forward()
+  st      = P.delimitedList(P.Group(expr), ",")
+  expr << ( va | fu + lp + P.Optional(st("subterms")) + rp )
+  return term(expr.parseString(t))
+                                                                # }}}1
+
+def rule(l, r = None):
   """..."""
+  if isinstance(l, rule):
+    return l
+  if r is None:
+    l, r = l.split("->")
+  return Rule(parse_term(l), parse_term(r))
 
 def ruleset():
   """..."""
