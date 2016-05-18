@@ -2,7 +2,7 @@
 
     File        : README.md
     Maintainer  : Felix C. Stegerman <flx@obfusk.net>
-    Date        : 2016-05-17
+    Date        : 2016-05-18
 
     Copyright   : Copyright (C) 2016  Felix C. Stegerman
     Version     : v0.0.1
@@ -28,7 +28,6 @@ See `trstools.py` for the code (with examples).
 * docs, examples & tests
 * digraph & tree output
 * main()
-* immutable data structures?
 * ...
 
 ## License

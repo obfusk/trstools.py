@@ -4,7 +4,7 @@
 #
 # File        : trstools.py
 # Maintainer  : Felix C. Stegerman <flx@obfusk.net>
-# Date        : 2016-05-17
+# Date        : 2016-05-18
 #
 # Copyright   : Copyright (C) 2016  Felix C. Stegerman
 # Version     : v0.0.1
@@ -38,6 +38,7 @@ else:
 
 __version__       = "0.0.1"
 
+# TODO
 def main(*args):                                                # {{{1
   p = argument_parser(); n = p.parse_args(args)
   if n.test:
@@ -48,6 +49,7 @@ def main(*args):                                                # {{{1
   return 0
                                                                 # }}}1
 
+# TODO
 def argument_parser():                                          # {{{1
   p = argparse.ArgumentParser(description = "trstools")
   p.add_argument("--version", action = "version",
@@ -60,76 +62,151 @@ def argument_parser():                                          # {{{1
   return p
                                                                 # }}}1
 
-FUNCTIONS = P.Word("fgh", P.alphas + "'")
-VARIABLES = P.Word("xyz", P.alphas + "'")
+class Immutable(object):                                        # {{{1
 
-# TODO: improve
-class Function(object):                                         # {{{1
+  """immutable base class"""
+
+  __slots__ = []
+
+  args_are_mandatory = False
+
+  @property
+  def ___slots(self):
+    return [x for x in self.__slots__ if not x.startswith("_")]
+
+  def __init__(self, data = None, **kw):
+    x = data if data is not None else {}; x.update(kw)
+    ks = set(x.keys()); ss = set(self.___slots)
+    for k in self.___slots:
+      if k in x:
+        self._Immutable___set(k, x[k]); del x[k]
+      else:
+        self._Immutable___set(k, None)
+    if len(x):
+      raise TypeError("unknown keys: {}".format(", ".join(x.keys())))
+    if self.args_are_mandatory and ks != ss:
+      raise TypeError("missing keys: {}".format(", ".join(ss - ks)))
+
+  def ___set(self, k, v):
+    super(Immutable, self).__setattr__(k, v)
+
+  def __setattr__(self, k, v):
+    if k in self.___slots:
+      raise AttributeError(
+        "'{}' object attribute '{}' is read-only".format(
+          self.__class__.__name__, k
+        )
+      )
+    else:
+      raise AttributeError(
+        "'{}' object has no attribute '{}'".format(
+          self.__class__.__name__, k
+        )
+      )
+
+  def copy(self, **kw):
+    return type(self)(dict(self.iteritems()), **kw)
+
+  def iteritems(self):
+    return ((k, getattr(self, k)) for k in self.___slots)
+
+  if sys.version_info.major == 2:
+    def items(self):
+      return list(self.iteritems())
+  else:
+    def items(self):
+      return self.iteritems()
+
+  def __eq__(self, rhs):
+    if not isinstance(rhs, type(self)): return NotImplemented
+    return dict(self.iteritems()) == dict(rhs.iteritems())
+
+  def __lt__(self, rhs):
+    if not isinstance(rhs, type(self)): return NotImplemented
+    return sorted(self.iteritems()) < sorted(rhs.iteritems())
+
+  def __le__(self, rhs):
+    if not isinstance(rhs, type(self)): return NotImplemented
+    return sorted(self.iteritems()) <= sorted(rhs.iteritems())
+
+  def __gt__(self, rhs):
+    if not isinstance(rhs, type(self)): return NotImplemented
+    return sorted(self.iteritems()) > sorted(rhs.iteritems())
+
+  def __ge__(self, rhs):
+    if not isinstance(rhs, type(self)): return NotImplemented
+    return sorted(self.iteritems()) >= sorted(rhs.iteritems())
+
+  def __repr__(self):
+    return '{}({})'.format(
+      self.__class__.__name__,
+      ", ".join("{} = {}".format(k, repr(v))
+                for (k,v) in self.iteritems())
+    )
+
+  def __hash__(self):
+    return hash(tuple(self.iteritems()))
+                                                                # }}}1
+
+class Function(Immutable):                                      # {{{1
   """Function with zero-or-more arguments."""
 
-  def __init__(self, name, *args):
-    self.name = name; self.args = list(args)
+  __slots__ = "name args".split()
 
-  def copy(self):
-    return type(self)(self.name, *[ a.copy() for a in self.args ])
+  def __init__(self, name, *args):
+    super(Function, self).__init__(name = name, args = args)
+
+  def copy(self, args = None):
+    if args is None: args = self.args
+    return type(self)(self.name, *args)
+
+  # TODO
+  def with_arg(self, i, x):
+    args = list(self.args); args[i] = x
+    return self.copy(args)
 
   def __repr__(self):
     return self.name + "(" + ",".join(map(repr, self.args)) + ")"
-
-  def __eq__(self, rhs):
-    if not isfunc(rhs): return False
-    return self.name == rhs.name and self.args == rhs.args
                                                                 # }}}1
 
-def isfunc(x): return isinstance(x, Function)
-
-# TODO: improve
-class Variable(object):                                         # {{{1
+class Variable(Immutable):                                      # {{{1
   """Variable."""
 
+  __slots__ = "name".split()
+
   def __init__(self, name):
-    self.name = name
+    super(Variable, self).__init__(name = name)
 
   def copy(self):
-    return type(self)(self.name)
+    return super(Variable, self).copy()
 
   def __repr__(self):
     return self.name
-
-  def __eq__(self, rhs):
-    if not isvar(rhs): return False
-    return self.name == rhs.name
                                                                 # }}}1
 
-def isvar(x): return isinstance(x, Variable)
+def isfunc(x): return isinstance(x, Function)
+def isvar (x): return isinstance(x, Variable)
+def isterm(x): return isfunc(x) or isvar(x)
 
-class Rule(object):                                             # {{{1
-  """Rule (left maps to right)."""
+class Rule(Immutable):                                          # {{{1
+  """Rule (left -> right)."""
 
-  def __init__(self, l, r):
-    self._l = l; self._r = r
+  __slots__ = "left right".split()
 
-  @property
-  def left(self):
-    return self._l
-
-  @property
-  def right(self):
-    return self._r
+  def __init__(self, left, right):
+    super(Rule, self).__init__(left = left, right = right)
 
   def __repr__(self):
-    return repr(self._l) + " -> " + repr(self._r)
+    return repr(self.left) + " -> " + repr(self.right)
                                                                 # }}}1
 
-class Ruleset(object):                                          # {{{1
+class Ruleset(Immutable):                                       # {{{1
   """Set of rules."""
 
-  def __init__(*rules):
-    self._rules = tuple(map(rule, rules))
+  __slots__ = "rules".split()
 
-  @property
-  def rules(self):
-    return self._rules
+  def __init__(*rules):
+    super(Ruleset, self).__init__(rules = tuple(map(rule, rules)))
                                                                 # }}}1
 
 def term(x):                                                    # {{{1
@@ -144,12 +221,15 @@ def term(x):                                                    # {{{1
   True
   """
 
-  if isfunc(x) or isvar(x): return x
+  if isterm(x): return x
   elif isinstance(x, P.ParseResults):
     if "varname" in x: return Variable(x.varname)
     return Function(x.funcname, *map(term, x.subterms))
   else: return term(parse_term(x))
                                                                 # }}}1
+
+FUNCTIONS = P.Word("fgh", P.alphas + "'")
+VARIABLES = P.Word("xyz", P.alphas + "'")
 
 def parse_term(t, func = FUNCTIONS, var = VARIABLES):           # {{{1
   """Parse a term."""
@@ -173,8 +253,7 @@ def ruleset():
 
 Subterm = collections.namedtuple("Subterm", "term wrap")
 
-# TODO: improve
-def subterms_(t, proper = False, variable = True):              # {{{1
+def subterms_(t, proper = False, variables = True):             # {{{1
   r"""
   Iterate over subterms (and functions that can wrap a substitute term
   back into the term in its place) of a term.
@@ -190,28 +269,29 @@ def subterms_(t, proper = False, variable = True):              # {{{1
   """
 
   def g(i, f):
-    def h(x): u = t.copy(); u.args[i] = f(x); return u
+    def h(x): return t.with_arg(i, f(x))
     return h
   if isfunc(t):
     if not proper:
       yield Subterm(t, lambda x: x)
     for i, u in enumerate(t.args):
-      for v, f in subterms_(u, variable = variable):
+      for v, f in subterms_(u, variables = variables):
         yield Subterm(v, g(i, f))
-  elif variable and not proper:
+  elif variables and not proper:
     yield Subterm(t, lambda x: x)
                                                                 # }}}1
 
-def subterms(t, proper = False, variable = True):
+def subterms(t, proper = False, variables = True):
   """Iterate over subterms of a term."""
-  for u in subterms_(t, proper, variable): yield u.term
+  for u in subterms_(t, proper, variables): yield u.term
 
-#TODO: improve
-def substitute_(t, sigma):                                      # {{{1
+def variables(t):
+  """The set of variales of a term."""
+  return set( u for u in subterms(t) if isvar(u) )
+
+def substitute(t, sigma):                                       # {{{1
   r"""
   Substitute terms for variables.
-
-  NB: modifies the term (or returns a new one if needed)!
 
   >>> import trstools as T
   >>> sigma = dict(x = "z", y = "g(x)")
@@ -220,20 +300,13 @@ def substitute_(t, sigma):                                      # {{{1
   """
 
   if isvar(t): return term(sigma.get(t.name, t))
-  t.args = [ substitute(u, sigma) for u in t.args ]
-  return t
+  return t.copy([ substitute(u, sigma) for u in t.args ])
                                                                 # }}}1
 
-def substitute(t, sigma):
-  """Substitute terms for variables (in a copy of the term)."""
-  return substitute_(t.copy(), sigma)
-
-# TODO: improve
-def applyrule_(t, r, variables = None):                         # {{{1
+# TODO
+def applyrule(t, r, _vars = None):                              # {{{1
   """
   Apply a rule to a term (if possible).
-
-  NB: modifies the term (or returns a new one if needed)!
 
   >>> import trstools as T
   >>> r = T.rule("f(g(x),y) -> f(x,h(y))")
@@ -242,10 +315,10 @@ def applyrule_(t, r, variables = None):                         # {{{1
   """
 
   lhs, rhs = r.left, r.right
-  if variables is None: variables = {}
+  if _vars is None: _vars = {}
   if isvar(lhs):
-    if lhs.name not in variables or variables[lhs.name] == t:
-      variables[lhs.name] = t
+    if lhs.name not in _vars or _vars[lhs.name] == t:
+      _vars[lhs.name] = t
       return t
   elif isfunc(t):
     if t.name == lhs.name:
@@ -253,14 +326,10 @@ def applyrule_(t, r, variables = None):                         # {{{1
         raise("functions differ in arity!")                     # TODO
       for i, u in enumerate(t.args):
         r_ = Rule(lhs.args[i], None)
-        if not applyrule_(u, r_, variables): return None
-      return substitute_(rhs, variables) if rhs is not None else True
+        if not applyrule(u, r_, _vars): return None
+      return substitute(rhs, _vars) if rhs is not None else True
   return None
                                                                 # }}}1
-
-def applyrule(t, rule):
-  """Apply a rule to (a copy of a) term (if possible)."""
-  return applyrule_(t.copy(), rule)
 
 def apply1():
   """..."""
@@ -278,9 +347,12 @@ def unify():
   """..."""
   raise "TODO"
 
-# TODO: more...
-for f in "subterms_ subterms substitute_ substitute \
-          applyrule_ applyrule".split():
+def critical_pairs():
+  """..."""
+  raise "TODO"
+
+# TODO
+for f in "subterms_ subterms variables substitute applyrule".split():
   setattr(Variable, f, vars()[f])
   setattr(Function, f, vars()[f])
 
