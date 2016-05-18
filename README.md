@@ -23,6 +23,12 @@ See `trstools.py` for the code (with examples).
 
 ## TODO
 
+* apply*, normalforms, unify
+* ruleset; .term(), .normalforms() etc.
+* docs, examples & tests
+* digraph & tree output
+* main()
+* immutable data structures?
 * ...
 
 ## License
