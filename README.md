@@ -23,11 +23,12 @@ See `trstools.py` for the code (with examples).
 
 ## TODO
 
-* apply*, normalforms, unify
-* ruleset; .term(), .normalforms() etc.
+* unify, critical_pairs
+* ruleset; Rule.term() and using rules for .apply() etc.
 * docs, examples & tests
 * digraph & tree output
 * main()
+* more efficient!?
 * ...
 
 ## License

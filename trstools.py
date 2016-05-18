@@ -305,8 +305,8 @@ def substitute(t, sigma):                                       # {{{1
 
 # TODO
 def applyrule(t, r, _vars = None):                              # {{{1
-  """
-  Apply a rule to a term (if possible).
+  r"""
+  Apply a rule to a term (if possible); returns None otherwise.
 
   >>> import trstools as T
   >>> r = T.rule("f(g(x),y) -> f(x,h(y))")
@@ -331,28 +331,118 @@ def applyrule(t, r, _vars = None):                              # {{{1
   return None
                                                                 # }}}1
 
-def apply1():
+Application = collections.namedtuple("Application",
+                                     "term left rule applied_rules")
+
+def apply1_(t, rules, already_applied = ()):                    # {{{1
+  r"""
+  Iterate over applications of rules to (subterms of) a term.
+
+  >>> import trstools as T
+  >>> r1 = T.rule("f(g(x),y) -> f(x,h(y))")
+  >>> r2 = T.rule("g(h(x))   -> h(g(x))")
+  >>> for a in T.term("f(g(h(x)),y)").apply1_([r1,r2]):
+  ...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
+  0                 f(h(x),h(y))
+  1                 f(h(g(x)),y)
+  """
+
+  for u, f in subterms_(t):
+    for i, r in enumerate(rules):
+      v = applyrule(u, r)
+      if v: yield Application(f(v), u, r, already_applied + (i,))
+                                                                # }}}1
+
+def apply1(t, rules):
+  """Iterate over terms resulting from applications of rules to
+  (subterms of) a term."""
+  for u in apply1_(t, rules): yield u.term
+
+def apply_(t, rules, n = None, ignore_seen = True, bfs = True): # {{{1
+  """
+  Iterate over recursive applications of rules to (subterms of) a
+  term.
+
+  >>> import trstools as T
+  >>> r1  = T.rule("f(g(x),y) -> f(x,h(y))")
+  >>> r2  = T.rule("g(h(x))   -> h(g(x))")
+  >>> t   = T.term("f(g(h(g(h(x)))),y)")
+
+  >>> for a in t.apply_([r1,r2]):
+  ...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
+  0                 f(h(g(h(x))),h(y))
+  1                 f(h(g(g(h(x)))),y)
+  1                 f(g(h(h(g(x)))),y)
+  0 -> 1            f(h(h(g(x))),h(y))
+  1 -> 1            f(h(g(h(g(x)))),y)
+  1 -> 1 -> 1       f(h(h(g(g(x)))),y)
+
+  >>> for a in t.apply_([r1,r2], ignore_seen = False, bfs = False):
+  ...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
+  0                 f(h(g(h(x))),h(y))
+  0 -> 1            f(h(h(g(x))),h(y))
+  1                 f(h(g(g(h(x)))),y)
+  1 -> 1            f(h(g(h(g(x)))),y)
+  1 -> 1 -> 1       f(h(h(g(g(x)))),y)
+  1                 f(g(h(h(g(x)))),y)
+  1 -> 0            f(h(h(g(x))),h(y))
+  1 -> 1            f(h(g(h(g(x)))),y)
+  1 -> 1 -> 1       f(h(h(g(g(x)))),y)
+  """
+
+  terms, seen = collections.deque([(0, t, ())]), set([t])
+  while terms:
+    i, u, a = terms.popleft()
+    if i != 0:
+      yield u; u = u.term
+    append = []
+    for v in apply1_(u, rules, a):
+      if  (not ignore_seen or v.term not in seen) and \
+          (n is None or i < n):
+        append += [(i+1,v,v.applied_rules)]
+        if ignore_seen: seen.add(v.term)
+    if bfs: terms.extend(append)
+    else:   terms.extendleft(reversed(append))
+                                                                # }}}1
+
+def apply(*a, **kw):
+  """Iterate over terms resulting from recursive applications of rules
+  to (subterms of) a term."""
+  for u in apply_(*a, **kw): yield u.term
+
+def isnormalform(t, rules):
+  """Is term a normal form?"""
+  return len(list(apply1(t, rules))) == 0
+
+def normalforms(t, rules):                                      # {{{1
+  """
+  Iterate over normal forms of term (for terminating TRS).
+
+  >>> import trstools as T
+  >>> r1  = T.rule("f(g(x),y) -> f(x,h(y))")
+  >>> r2  = T.rule("g(h(x))   -> h(g(x))")
+  >>> t   = T.term("f(g(h(g(h(x)))),y)")
+  >>> for a in t.normalforms([r1,r2]): print(a)
+  f(h(h(g(x))),h(y))
+  f(h(h(g(g(x)))),y)
+  """
+
+  for u in apply(t, rules):
+    if isnormalform(u, rules): yield u
+                                                                # }}}1
+
+def unify(rules):
   """..."""
   raise "TODO"
 
-def apply(n = None):
-  """..."""
-  raise "TODO"
-
-def normalforms():
-  """..."""
-  raise "TODO"
-
-def unify():
-  """..."""
-  raise "TODO"
-
-def critical_pairs():
+def critical_pairs(rules):
   """..."""
   raise "TODO"
 
 # TODO
-for f in "subterms_ subterms variables substitute applyrule".split():
+for f in "subterms_ subterms variables substitute \
+          applyrule apply1_ apply1 apply_ apply   \
+          isnormalform normalforms".split():
   setattr(Variable, f, vars()[f])
   setattr(Function, f, vars()[f])
 
