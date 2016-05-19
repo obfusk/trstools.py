@@ -21,8 +21,60 @@ Examples
 
 >>> import trstools as T
 
-... TODO ...
+>>> r1  = T.rule("f(x,h(x)) -> f(x,x)")
+>>> r2  = T.rule("f(g(x),y) -> f(x,h(y))")
+>>> r3  = T.rule("g(h(x))   -> h(g(x)))")
 
+>>> rs  = [r1, r2, r3]
+
+>>> t1  = T.term("f(g(h(x)),y)")
+>>> t2  = T.term("f(h(h(x)),y)")
+>>> t3  = T.term("f(g(h(g(h(x)))),y)")
+
+>>> for u in t1.subterms(): print(u)
+f(g(h(x)),y)
+g(h(x))
+h(x)
+x
+y
+
+>>> tuple(sorted(T.variables(t1)))
+(x, y)
+
+>>> sigma = dict(x = "z", y = "g(x)")
+>>> t1.substitute(sigma)
+f(g(h(z)),g(x))
+
+>>> for a in t3.applyrec_(rs, ignore_seen = False, bfs = False):
+...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
+1                 f(h(g(h(x))),h(y))
+1 -> 2            f(h(h(g(x))),h(y))
+2                 f(h(g(g(h(x)))),y)
+2 -> 2            f(h(g(h(g(x)))),y)
+2 -> 2 -> 2       f(h(h(g(g(x)))),y)
+2                 f(g(h(h(g(x)))),y)
+2 -> 1            f(h(h(g(x))),h(y))
+2 -> 2            f(h(g(h(g(x)))),y)
+2 -> 2 -> 2       f(h(h(g(g(x)))),y)
+
+>>> for a in t3.normalforms(rs): print(a)
+f(h(h(g(x))),h(y))
+f(h(h(g(g(x)))),y)
+
+>>> for u, v in T.critical_pairs(rs, trivial = False):
+...   print("[ %-16s, %-12s ]" % (u, v))
+[ f(x,h(h(g(x)))) , f(g(x),g(x)) ]
+[ f(h(g(x)),z)    , f(h(x),h(z)) ]
+
+>>> for p in T.critical_pairs(rs):
+...   print(is_convergent_pair(p, rs), is_trivial_pair(p))
+True True
+False False
+True True
+False False
+True True
+
+... TODO ...
 """
                                                                 # }}}1
 
@@ -31,9 +83,9 @@ from __future__ import print_function
 import argparse, collections, pyparsing as P, sys
 
 if sys.version_info.major == 2:                                 # {{{1
-  pass
+  def iteritems(x): return x.iteritems()
 else:
-  xrange = range
+  def iteritems(x): return x.items()
                                                                 # }}}1
 
 __version__       = "0.0.1"
@@ -148,6 +200,11 @@ class Immutable(object):                                        # {{{1
     return hash(tuple(self.iteritems()))
                                                                 # }}}1
 
+FUNCTIONS   = P.Word("fgh", P.alphas + "'")
+VARIABLES   = P.Word("xyz", P.alphas + "'")
+PRE1, PRE2  = "xy"
+EASYFUNCS   = "x y z x' y' z'".split()
+
 class Function(Immutable):                                      # {{{1
   """Function with zero-or-more arguments."""
 
@@ -156,14 +213,15 @@ class Function(Immutable):                                      # {{{1
   def __init__(self, name, *args):
     super(Function, self).__init__(name = name, args = args)
 
-  def copy(self, args = None):
+  def copy(self, name = None, args = None):
+    if name is None: name = self.name
     if args is None: args = self.args
-    return type(self)(self.name, *args)
+    return type(self)(name, *args)
 
   # TODO
   def with_arg(self, i, x):
     args = list(self.args); args[i] = x
-    return self.copy(args)
+    return self.copy(args = args)
 
   def __repr__(self):
     return self.name + "(" + ",".join(map(repr, self.args)) + ")"
@@ -177,8 +235,9 @@ class Variable(Immutable):                                      # {{{1
   def __init__(self, name):
     super(Variable, self).__init__(name = name)
 
-  def copy(self):
-    return super(Variable, self).copy()
+  def copy(self, name = None):
+    if name is None: name = self.name
+    return type(self)(name)
 
   def __repr__(self):
     return self.name
@@ -228,9 +287,6 @@ def term(x):                                                    # {{{1
   else: return term(parse_term(x))
                                                                 # }}}1
 
-FUNCTIONS = P.Word("fgh", P.alphas + "'")
-VARIABLES = P.Word("xyz", P.alphas + "'")
-
 def parse_term(t, func = FUNCTIONS, var = VARIABLES):           # {{{1
   """Parse a term."""
 
@@ -248,8 +304,7 @@ def rule(l, r = None):
   if r is None: l, r = l.split("->")
   return Rule(term(l), term(r))
 
-def ruleset():
-  """..."""
+def ruleset(*rules): return Ruleset(*rules)
 
 Subterm = collections.namedtuple("Subterm", "term wrap")
 
@@ -273,12 +328,12 @@ def subterms_(t, proper = False, variables = True):             # {{{1
     return h
   if isfunc(t):
     if not proper:
-      yield Subterm(t, lambda x: x)
+      yield Subterm(t, id_)
     for i, u in enumerate(t.args):
       for v, f in subterms_(u, variables = variables):
         yield Subterm(v, g(i, f))
   elif variables and not proper:
-    yield Subterm(t, lambda x: x)
+    yield Subterm(t, id_)
                                                                 # }}}1
 
 def subterms(t, proper = False, variables = True):
@@ -300,7 +355,7 @@ def substitute(t, sigma):                                       # {{{1
   """
 
   if isvar(t): return term(sigma.get(t.name, t))
-  return t.copy([ substitute(u, sigma) for u in t.args ])
+  return t.copy(args = [ substitute(u, sigma) for u in t.args ])
                                                                 # }}}1
 
 # TODO
@@ -323,10 +378,9 @@ def applyrule(t, r, _vars = None):                              # {{{1
   elif isfunc(t):
     if t.name == lhs.name:
       if len(t.args) != len(lhs.args):
-        raise("functions differ in arity!")                     # TODO
-      for i, u in enumerate(t.args):
-        r_ = Rule(lhs.args[i], None)
-        if not applyrule(u, r_, _vars): return None
+        raise ValueError("functions differ in arity!")          # TODO
+      for u, v in zip(t.args, lhs.args):
+        if not applyrule(u, Rule(v, None), _vars): return None
       return substitute(rhs, _vars) if rhs is not None else True
   return None
                                                                 # }}}1
@@ -358,7 +412,8 @@ def apply1(t, rules):
   (subterms of) a term."""
   for u in apply1_(t, rules): yield u.term
 
-def apply_(t, rules, n = None, ignore_seen = True, bfs = True): # {{{1
+def applyrec_(t, rules, n = None, ignore_seen = True,
+              bfs = True):                                      # {{{1
   """
   Iterate over recursive applications of rules to (subterms of) a
   term.
@@ -368,7 +423,7 @@ def apply_(t, rules, n = None, ignore_seen = True, bfs = True): # {{{1
   >>> r2  = T.rule("g(h(x))   -> h(g(x))")
   >>> t   = T.term("f(g(h(g(h(x)))),y)")
 
-  >>> for a in t.apply_([r1,r2]):
+  >>> for a in t.applyrec_([r1,r2]):
   ...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
   0                 f(h(g(h(x))),h(y))
   1                 f(h(g(g(h(x)))),y)
@@ -377,7 +432,7 @@ def apply_(t, rules, n = None, ignore_seen = True, bfs = True): # {{{1
   1 -> 1            f(h(g(h(g(x)))),y)
   1 -> 1 -> 1       f(h(h(g(g(x)))),y)
 
-  >>> for a in t.apply_([r1,r2], ignore_seen = False, bfs = False):
+  >>> for a in t.applyrec_([r1,r2], ignore_seen = False, bfs = False):
   ...   print("%-17s" % " -> ".join(map(str,a.applied_rules)), a.term)
   0                 f(h(g(h(x))),h(y))
   0 -> 1            f(h(h(g(x))),h(y))
@@ -405,13 +460,13 @@ def apply_(t, rules, n = None, ignore_seen = True, bfs = True): # {{{1
     else:   terms.extendleft(reversed(append))
                                                                 # }}}1
 
-def apply(*a, **kw):
+def applyrec(*a, **kw):
   """Iterate over terms resulting from recursive applications of rules
   to (subterms of) a term."""
-  for u in apply_(*a, **kw): yield u.term
+  for u in applyrec_(*a, **kw): yield u.term
 
 def isnormalform(t, rules):
-  """Is term a normal form?"""
+  """Is term t a normal form?"""
   return len(list(apply1(t, rules))) == 0
 
 def normalforms(t, rules):                                      # {{{1
@@ -427,24 +482,158 @@ def normalforms(t, rules):                                      # {{{1
   f(h(h(g(g(x)))),y)
   """
 
-  for u in apply(t, rules):
-    if isnormalform(u, rules): yield u
+  if isnormalform(t, rules): yield t
+  else:
+    for u in applyrec(t, rules):
+      if isnormalform(u, rules): yield u
                                                                 # }}}1
 
-def unify(rules):
-  """..."""
-  raise "TODO"
+# TODO
+def distinct_variable_funcs(u, v, pre1 = PRE1, pre2 = PRE2,
+                            easy = EASYFUNCS):                  # {{{1
+  """Create functions to make the variables in u and v distinct by
+  substitution."""
 
-def critical_pairs(rules):
-  """..."""
-  raise "TODO"
+  v1, v2    = variables(u), variables(v)
+  if not (v1 & v2): return id_, id_
+  if len(v1) + len(v2) <= len(easy):
+    s1      = dict(zip(sorted( x.name for x in v1 ), easy[:len(v1)]))
+    s2      = dict(zip(sorted( x.name for x in v2 ), easy[len(v1):]))
+  else:
+    f       = lambda var, p: dict( (x.name,p+x.name) for x in var )
+    s1, s2  = f(v1, pre1), f(v2, pre2)
+  f1  , f2  = lambda x: substitute(x, s1), \
+              lambda x: substitute(x, s2)
+  return f1, f2
+                                                                # }}}1
+
+Unification = collections.namedtuple("Unification",
+                                     "u v sigma u_sigma v_sigma")
 
 # TODO
-for f in "subterms_ subterms variables substitute \
-          applyrule apply1_ apply1 apply_ apply   \
+def _naive_unify(u, v, sigma):                                  # {{{1
+  if isvar(u):
+    if u.name not in sigma or sigma[u.name] == v:
+      sigma[u.name] = v
+      return sigma
+  elif isvar(v):
+    if v.name not in sigma or sigma[v.name] == u:
+      sigma[v.name] = u
+      return sigma
+  else:
+    if u.name == v.name:
+      if len(u.args) != len(v.args):
+        raise ValueError("functions differ in arity!")          # TODO
+      for w1, w2 in zip(u.args, v.args):
+        if not _naive_unify(w1, w2, sigma): return None
+      return sigma
+  return None
+                                                                # }}}1
+
+# TODO
+def _fix_sigma(sigma, n):                                       # {{{1
+  s1, s2 = sigma, None
+  while s1 != s2:
+    if n <= 0: raise RuntimeError("recurses!")                  # TODO
+    n  -= 1
+    s2  = s1
+    s1  = dict( (k, substitute(v, s1)) for k, v in iteritems(s1) )
+  return s1
+                                                                # }}}1
+
+def unify(u, v, already_distinct = False):                      # {{{1
+  """
+  Find a sigma that unifies two terms.
+
+  >>> import trstools as T
+  >>> r1 = T.rule("f(x,h(x)) -> f(x,x)")
+  >>> r2 = T.rule("f(g(x),y) -> f(x,h(y))")
+  >>> r3 = T.rule("g(h(x))   -> h(g(x)))")
+
+  >>> u1 = T.unify(r1.left.substitute(dict(x = "z")), r1.left)
+  >>> print(u1.u_sigma); print(u1.v_sigma)
+  f(x,h(x))
+  f(x,h(x))
+
+  >>> u2 = T.unify(r1.left, r2.left)
+  >>> print(u2.u_sigma); print(u2.v_sigma)
+  f(g(y),h(g(y)))
+  f(g(y),h(g(y)))
+
+  >>> not T.unify(r1.left, r3.left)
+  True
+  """
+
+  if not already_distinct:
+    f, g  = distinct_variable_funcs(u, v)
+    u, v  = f(u), g(v)
+  sigma = _naive_unify(u, v, {})
+  if sigma:
+    sigma = _fix_sigma(sigma, len(sigma))
+    return Unification(u, v, sigma, substitute(u, sigma),
+                                    substitute(v, sigma))
+  return None
+                                                                # }}}1
+
+def critical_pairs(rules, trivial = True):                      # {{{1
+  """
+  Iterate over critical pairs of a (terminating) TRS.
+
+  >>> import trstools as T
+  >>> r1 = T.rule("f(x,h(x)) -> f(x,x)")
+  >>> r2 = T.rule("f(g(x),y) -> f(x,h(y))")
+  >>> r3 = T.rule("g(h(x))   -> h(g(x)))")
+
+  >>> for u, v in T.critical_pairs([r1, r2, r3]):
+  ...   print("[ %-16s, %-12s ]" % (u, v))
+  [ f(y,y)          , f(y,y)       ]
+  [ f(x,h(h(g(x)))) , f(g(x),g(x)) ]
+  [ f(z,h(x'))      , f(z,h(x'))   ]
+  [ f(h(g(x)),z)    , f(h(x),h(z)) ]
+  [ h(g(y))         , h(g(y))      ]
+
+  >>> for u, v in T.critical_pairs([r1, r2, r3], trivial = False):
+  ...   print("[ %-16s, %-12s ]" % (u, v))
+  [ f(x,h(h(g(x)))) , f(g(x),g(x)) ]
+  [ f(h(g(x)),z)    , f(h(x),h(z)) ]
+  """
+
+  for i, r1 in enumerate(rules):
+    for j, r2 in enumerate(rules):
+      f, g  = distinct_variable_funcs(r1.left, r2.left)
+      u, v  = f(r1.left), g(r2.left)
+      p     = i < j if trivial else i <= j
+      for t, h in subterms_(v, proper = p, variables = False):
+        uni = unify(u, t, already_distinct = True)
+        if uni:
+          yield substitute(h(f(r1.right)), uni.sigma), \
+                substitute(  g(r2.right) , uni.sigma)
+                                                                # }}}1
+
+def is_convergent_pair(p, rules):
+  """Is the critical pair convergent?"""
+  u , v   = p
+  n1, n2  = list(normalforms(u, rules)), list(normalforms(v, rules))
+  return n1 == n2
+
+def is_trivial_pair(p):
+  """Is the critical pair trivial?"""
+  u, v = p; return u == v
+
+def digraph():
+  pass
+
+def tree():
+  pass
+
+# TODO
+for f in "subterms_ subterms variables substitute       \
+          applyrule apply1_ apply1 applyrec_ applyrec   \
           isnormalform normalforms".split():
   setattr(Variable, f, vars()[f])
   setattr(Function, f, vars()[f])
+
+id_ = lambda x: x
 
 if __name__ == "__main__":
   sys.exit(main(*sys.argv[1:]))

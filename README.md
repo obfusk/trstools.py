@@ -23,7 +23,6 @@ See `trstools.py` for the code (with examples).
 
 ## TODO
 
-* unify, critical_pairs
 * ruleset; Rule.term() and using rules for .apply() etc.
 * docs, examples & tests
 * digraph & tree output
