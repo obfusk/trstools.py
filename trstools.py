@@ -259,15 +259,6 @@ class Rule(Immutable):                                          # {{{1
     return repr(self.left) + " -> " + repr(self.right)
                                                                 # }}}1
 
-class Ruleset(Immutable):                                       # {{{1
-  """Set of rules."""
-
-  __slots__ = "rules".split()
-
-  def __init__(*rules):
-    super(Ruleset, self).__init__(rules = tuple(map(rule, rules)))
-                                                                # }}}1
-
 def term(x):                                                    # {{{1
   r"""
   Turn string or parse result into a nested Function/Variable tree.
@@ -303,8 +294,6 @@ def rule(l, r = None):
   if isinstance(l, Rule): return l
   if r is None: l, r = l.split("->")
   return Rule(term(l), term(r))
-
-def ruleset(*rules): return Ruleset(*rules)
 
 Subterm = collections.namedtuple("Subterm", "term wrap")
 

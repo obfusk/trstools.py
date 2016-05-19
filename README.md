@@ -23,9 +23,8 @@ See `trstools.py` for the code (with examples).
 
 ## TODO
 
-* ruleset; Rule.term() and using rules for .apply() etc.
-* docs, examples & tests
 * digraph & tree output
+* docs, examples & tests
 * main()
 * more efficient!?
 * ...
