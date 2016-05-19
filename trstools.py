@@ -7,7 +7,7 @@
 # Date        : 2016-05-18
 #
 # Copyright   : Copyright (C) 2016  Felix C. Stegerman
-# Version     : v0.1.0
+# Version     : v0.1.1
 # License     : GPLv3+
 #
 # --                                                            ; }}}1
@@ -57,7 +57,7 @@ f(g(h(z)),g(x))
 2 -> 2            f(h(g(h(g(x)))),y)
 2 -> 2 -> 2       f(h(h(g(g(x)))),y)
 
->>> for a in t3.normalforms(rs): print(a)
+>>> for u in t3.normalforms(rs): print(u)
 f(h(h(g(x))),h(y))
 f(h(h(g(g(x)))),y)
 
@@ -85,14 +85,14 @@ f(g(h(g(h(x)))),y)
     --1-->  f(h(h(g(x))),h(y))  NF
     --2-->  f(h(g(h(g(x)))),y)
       --2-->  f(h(h(g(g(x)))),y)  NF
-
-... TODO ...
 """
+# ... TODO ...
                                                                 # }}}1
 
 from __future__ import print_function
 
-import argparse, collections, pyparsing as P, sys
+import argparse, collections, subprocess, sys, tempfile
+import pyparsing as P
 
 if sys.version_info.major == 2:                                 # {{{1
   def iteritems(x): return x.iteritems()
@@ -100,31 +100,77 @@ else:
   def iteritems(x): return x.items()
                                                                 # }}}1
 
-__version__       = "0.1.0"
+__version__       = "0.1.1"
 
-# TODO
 def main(*args):                                                # {{{1
   p = argument_parser(); n = p.parse_args(args)
   if n.test:
     import doctest
     doctest.testmod(verbose = n.verbose)
     return 0
-  # ... TODO ...
+  incompat_args = [n.normalforms, n.critical_pairs, n.tree, n.graph]
+  if  len([ x for x in incompat_args if x ]) > 1        or \
+      (n.output and not n.graph)                        or \
+      (n.trivial is not None and not n.critical_pairs)  or \
+      (n.mark_nf and not (n.tree or n.graph)):
+    print("{}: error: incompatible arguments".format(p.prog),
+          file = sys.stderr)                                    # TODO
+    return 2
+  rules = [ rule(r) for r in n.rules ]
+  if n.rules_from: rules += list(rules_from_file(n.rules_from))
+  if n.normalforms:
+    for u in term(n.normalforms).normalforms(rules): print(u)
+  elif n.critical_pairs:
+    for u, v in critical_pairs(rules, trivial = n.trivial):
+      print("[ %s, %s ]" % (u, v))
+  elif n.tree:
+    show_tree(term(n.tree), rules, show_nf = n.mark_nf)
+  elif n.graph:
+    show_or_save_digraph(term(n.graph), rules, fname = n.output,
+                         show_nf = n.mark_nf)
+  else:
+    print("{}: error: missing command".format(p.prog),
+          file = sys.stderr)
+    return 1
   return 0
                                                                 # }}}1
 
-# TODO
 def argument_parser():                                          # {{{1
   p = argparse.ArgumentParser(description = "trstools")
+  p.add_argument("--rule", dest = "rules", metavar = "RULE",
+                 action = "append",
+                 help = "specify a TRS rule; "
+                        "can be used multiple times")
+  p.add_argument("--rules-from", metavar = "FILE",
+                 help = "specify TRS rules in a file")
+  p.add_argument("--normalforms", metavar = "TERM",
+                 help = "show normal forms of TERM")
+  p.add_argument("--critical-pairs", action = "store_true",
+                 help = "show critical pairs of TRS")
+  p.add_argument("--trivial", action = "store_true",
+                 help = "show trivial critical pairs")
+  p.add_argument("--tree", metavar = "TERM",
+                 help = "show tree of reductions of TERM")
+  p.add_argument("--mark-nf", action = "store_true",
+                 help = "mark normal forms in tree or graph")
+  p.add_argument("--graph", metavar = "TERM",
+                 help = "show (or save) graph of reductions of TERM")
+  p.add_argument("--output", metavar = "FILE",
+                 help = "save graph to FILE instead of showing it")
   p.add_argument("--version", action = "version",
                  version = "%(prog)s {}".format(__version__))
   p.add_argument("--test", action = "store_true",
                  help = "run tests (not trstools)")
   p.add_argument("--verbose", "-v", action = "store_true",
                  help = "run tests verbosely")
-  # ... TODO ...
+  p.set_defaults(rules = [], trivial = None)
   return p
                                                                 # }}}1
+
+def rules_from_file(fname):
+  with open(fname) as f:
+    for line in ( line.strip() for line in f ):
+      if line and not line.startswith("#"): yield rule(line)
 
 class Immutable(object):                                        # {{{1
 
@@ -477,7 +523,7 @@ def normalforms(t, rules):                                      # {{{1
   >>> r1  = T.rule("f(g(x),y) -> f(x,h(y))")
   >>> r2  = T.rule("g(h(x))   -> h(g(x))")
   >>> t   = T.term("f(g(h(g(h(x)))),y)")
-  >>> for a in t.normalforms([r1,r2]): print(a)
+  >>> for u in t.normalforms([r1,r2]): print(u)
   f(h(h(g(x))),h(y))
   f(h(h(g(g(x)))),y)
   """
@@ -634,7 +680,7 @@ def show_tree(t, rules, show_nf = True, ignore_seen = False,
   show_tree_(t, t.applyrec_(rules, ignore_seen = ignore_seen,
                             bfs = bfs), rules, show_nf)
 
-def digraph_(t, applications, rules, show_nf = True):           # {{{1
+def digraph(t, applications, rules, show_nf = True):            # {{{1
   """Iterate over lines of digraph of applications."""
   yield "digraph G {"
   yield "  node [shape=plaintext];"
@@ -645,32 +691,36 @@ def digraph_(t, applications, rules, show_nf = True):           # {{{1
   yield "}"
                                                                 # }}}1
 
-def digraph(t, applications, rules, show_nf = True):
-  """Digraph (dot file) of applications."""
-  return "".join( line + "\n" for line in digraph_(t, applications,
-                                                   rules, show_nf) )
+DOTCMD  = "dot -Tpng".split()
+OPENCMD = "xdg-open".split()
 
-# TODO
-def show_digraph_(g):                                           # {{{1
-  import subprocess, sys, tempfile
+def show_or_save_digraph_(g, fname = None):                     # {{{1
+  """Write digraph to tempfile, convert to png and save or open."""
   with tempfile.NamedTemporaryFile() as f1:
-    f1.write(g.encode('utf-8')); f1.flush()
-    with tempfile.NamedTemporaryFile() as f2:
-      subprocess.check_call(["dot", "-Tpng", f1.name], stdout = f2)
-      f2.flush()
-      subprocess.check_call(["xdg-open", f2.name])
-      print("Press enter to continue..."); sys.stdin.readline()
+    for line in g: f1.write(line.encode("utf-8"))
+    f1.flush()
+    with (open(fname, "w") if fname else
+          tempfile.NamedTemporaryFile()) as f2:
+      subprocess.check_call(DOTCMD + [f1.name], stdout = f2)
+      if not fname:
+        f2.flush(); subprocess.check_call(OPENCMD + [f2.name])
+        print("Press return..."); sys.stdin.readline()
                                                                 # }}}1
 
-def show_digraph(t, rules, show_nf = True, ignore_seen = False,
-                 bfs = True):
+def show_or_save_digraph(t, rules, fname = None, show_nf = True,
+                         ignore_seen = False, bfs = True):
+  apps = t.applyrec_(rules, bfs = bfs, ignore_seen = ignore_seen)
+  show_or_save_digraph_(digraph(t, apps, rules, show_nf), fname)
+
+def show_digraph(t, rules, **kw):
   """Create digraph of applications using dot and show it using
   xdg-open."""
-  show_digraph_(digraph(t, t.applyrec_(rules, bfs = bfs,
-                                       ignore_seen = ignore_seen),
-                        rules, show_nf))
+  show_or_save_digraph(t, rules, **kw)
 
-# TODO
+def save_digraph(fname, t, rules, **kw):
+  """Create digraph of applications using dot and save it."""
+  show_or_save_digraph(t, rules, fname, **kw)
+
 for f in "subterms_ subterms variables substitute       \
           applyrule apply1_ apply1 applyrec_ applyrec   \
           isnormalform normalforms".split():
