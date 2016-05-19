@@ -5,7 +5,7 @@
     Date        : 2016-05-18
 
     Copyright   : Copyright (C) 2016  Felix C. Stegerman
-    Version     : v0.0.1
+    Version     : v0.1.0
 
 []: }}}1
 
@@ -23,8 +23,6 @@ See `trstools.py` for the code (with examples).
 
 ## TODO
 
-* digraph & tree output
-* docs, examples & tests
 * main()
 * more efficient!?
 * ...

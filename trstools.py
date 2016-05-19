@@ -7,7 +7,7 @@
 # Date        : 2016-05-18
 #
 # Copyright   : Copyright (C) 2016  Felix C. Stegerman
-# Version     : v0.0.1
+# Version     : v0.1.0
 # License     : GPLv3+
 #
 # --                                                            ; }}}1
@@ -74,6 +74,18 @@ True True
 False False
 True True
 
+>>> T.show_tree(t3, rs)
+f(g(h(g(h(x)))),y)
+  --1-->  f(h(g(h(x))),h(y))
+    --2-->  f(h(h(g(x))),h(y))  NF
+  --2-->  f(h(g(g(h(x)))),y)
+    --2-->  f(h(g(h(g(x)))),y)
+      --2-->  f(h(h(g(g(x)))),y)  NF
+  --2-->  f(g(h(h(g(x)))),y)
+    --1-->  f(h(h(g(x))),h(y))  NF
+    --2-->  f(h(g(h(g(x)))),y)
+      --2-->  f(h(h(g(g(x)))),y)  NF
+
 ... TODO ...
 """
                                                                 # }}}1
@@ -88,7 +100,7 @@ else:
   def iteritems(x): return x.items()
                                                                 # }}}1
 
-__version__       = "0.0.1"
+__version__       = "0.1.0"
 
 # TODO
 def main(*args):                                                # {{{1
@@ -373,9 +385,8 @@ def applyrule(t, r, _vars = None):                              # {{{1
       return substitute(rhs, _vars) if rhs is not None else True
   return None
                                                                 # }}}1
-
-Application = collections.namedtuple("Application",
-                                     "term left rule applied_rules")
+Application = collections.namedtuple("Application", "term left "
+                                     "subleft rule applied_rules")
 
 def apply1_(t, rules, already_applied = ()):                    # {{{1
   r"""
@@ -393,7 +404,7 @@ def apply1_(t, rules, already_applied = ()):                    # {{{1
   for u, f in subterms_(t):
     for i, r in enumerate(rules):
       v = applyrule(u, r)
-      if v: yield Application(f(v), u, r, already_applied + (i,))
+      if v: yield Application(f(v), t, u, r, already_applied + (i,))
                                                                 # }}}1
 
 def apply1(t, rules):
@@ -609,11 +620,55 @@ def is_trivial_pair(p):
   """Is the critical pair trivial?"""
   u, v = p; return u == v
 
-def digraph():
-  pass
+# TODO
+def show_tree_(t, applications, rules, show_nf = True):
+  print(t)
+  for a in applications:
+    s, r, t = "  "*len(a.applied_rules), a.applied_rules[-1], a.term
+    n       = "  NF" if show_nf and isnormalform(t, rules) else ""
+    print("{}-{:-^3}->  {}{}".format(s, r, t, n))
 
-def tree():
-  pass
+def show_tree(t, rules, show_nf = True, ignore_seen = False,
+              bfs = False):
+  """Show tree of applications."""
+  show_tree_(t, t.applyrec_(rules, ignore_seen = ignore_seen,
+                            bfs = bfs), rules, show_nf)
+
+def digraph_(t, applications, rules, show_nf = True):           # {{{1
+  """Iterate over lines of digraph of applications."""
+  yield "digraph G {"
+  yield "  node [shape=plaintext];"
+  for a in applications:
+    n = " NF" if show_nf and isnormalform(a.term, rules) else ""
+    yield '  "%s" -> "%s%s" [label="%d"];' % \
+      (a.left, a.term, n, a.applied_rules[-1])
+  yield "}"
+                                                                # }}}1
+
+def digraph(t, applications, rules, show_nf = True):
+  """Digraph (dot file) of applications."""
+  return "".join( line + "\n" for line in digraph_(t, applications,
+                                                   rules, show_nf) )
+
+# TODO
+def show_digraph_(g):                                           # {{{1
+  import subprocess, sys, tempfile
+  with tempfile.NamedTemporaryFile() as f1:
+    f1.write(g.encode('utf-8')); f1.flush()
+    with tempfile.NamedTemporaryFile() as f2:
+      subprocess.check_call(["dot", "-Tpng", f1.name], stdout = f2)
+      f2.flush()
+      subprocess.check_call(["xdg-open", f2.name])
+      print("Press enter to continue..."); sys.stdin.readline()
+                                                                # }}}1
+
+def show_digraph(t, rules, show_nf = True, ignore_seen = False,
+                 bfs = True):
+  """Create digraph of applications using dot and show it using
+  xdg-open."""
+  show_digraph_(digraph(t, t.applyrec_(rules, bfs = bfs,
+                                       ignore_seen = ignore_seen),
+                        rules, show_nf))
 
 # TODO
 for f in "subterms_ subterms variables substitute       \
