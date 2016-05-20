@@ -91,7 +91,7 @@ f(g(h(g(h(x)))),y)
 
 from __future__ import print_function
 
-import argparse, collections, subprocess, sys, tempfile
+import argparse, collections, os, subprocess, sys, tempfile
 import pyparsing as P
 
 if sys.version_info.major == 2:                                 # {{{1
@@ -691,8 +691,8 @@ def digraph(t, applications, rules, show_nf = True):            # {{{1
   yield "}"
                                                                 # }}}1
 
-DOTCMD  = "dot -Tpng".split()
-OPENCMD = "xdg-open".split()
+DOTCMD  = (os.environ.get("DOT_COMMAND","") or "dot -Tpng").split()
+OPENCMD = (os.environ.get("IMAGE_VIEWER","") or "xdg-open").split()
 
 def show_or_save_digraph_(g, fname = None):                     # {{{1
   """Write digraph to tempfile, convert to png and save or open."""
