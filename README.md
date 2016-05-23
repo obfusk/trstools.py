@@ -60,6 +60,19 @@ $ ./trstools.py --rules-from=/tmp/rules --graph "f(g(h(g(h(x)))),y)" \
 $ xdg-open /tmp/graph.png
 ```
 
+## Requirements
+
+* [pyparsing](http://pyparsing.wikispaces.com/)
+* [graphviz](http://www.graphviz.org/) (to generate graphs)
+
+### Installing the requirements (Debian & Ubuntu)
+
+```bash
+$ apt-get install graphviz
+$ apt-get install python-pyparsing    # for python 2, or
+$ apt-get install python3-pyparsing   # for python 3
+```
+
 ## TODO
 
 * no double lines in graph?!
