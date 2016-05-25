@@ -75,8 +75,10 @@ $ apt-get install python3-pyparsing   # for python 3
 
 ## TODO
 
+* properly implement `unify()`!
 * no double lines in graph?!
 * improve, make more efficient?!
+* pypi package?!
 * ...
 
 ## License
