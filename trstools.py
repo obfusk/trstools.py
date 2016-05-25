@@ -330,10 +330,9 @@ def term(x):                                                    # {{{1
   """
 
   if isterm(x): return x
-  elif isinstance(x, P.ParseResults):
-    if "varname" in x: return Variable(x.varname)
-    return Function(x.funcname, *map(term, x.subterms))
-  else: return term(parse_term(x))
+  if not isinstance(x, P.ParseResults): x = parse_term(x)
+  if "varname" in x: return Variable(x.varname)
+  return Function(x.funcname, *map(term, x.subterms))
                                                                 # }}}1
 
 def parse_term(t, func = FUNCTIONS, var = VARIABLES):           # {{{1
