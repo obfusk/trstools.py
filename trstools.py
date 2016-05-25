@@ -23,7 +23,7 @@ Examples
 
 >>> r1  = T.rule("f(x,h(x)) -> f(x,x)")
 >>> r2  = T.rule("f(g(x),y) -> f(x,h(y))")
->>> r3  = T.rule("g(h(x))   -> h(g(x)))")
+>>> r3  = T.rule("g(h(x))   -> h(g(x))")
 
 >>> rs  = [r1, r2, r3]
 
@@ -344,7 +344,7 @@ def parse_term(t, func = FUNCTIONS, var = VARIABLES):           # {{{1
   expr    = P.Forward()
   st      = P.delimitedList(P.Group(expr), ",")
   expr << ( va | fu + lp + P.Optional(st("subterms")) + rp )
-  return expr.parseString(t)
+  return expr.parseString(t, True)
                                                                 # }}}1
 
 def rule(l, r = None):
@@ -594,7 +594,7 @@ def unify(u, v, already_distinct = False):                      # {{{1
   >>> import trstools as T
   >>> r1 = T.rule("f(x,h(x)) -> f(x,x)")
   >>> r2 = T.rule("f(g(x),y) -> f(x,h(y))")
-  >>> r3 = T.rule("g(h(x))   -> h(g(x)))")
+  >>> r3 = T.rule("g(h(x))   -> h(g(x))")
 
   >>> u1 = T.unify(r1.left.substitute(dict(x = "z")), r1.left)
   >>> print(u1.u_sigma); print(u1.v_sigma)
@@ -628,7 +628,7 @@ def critical_pairs(rules, trivial = True):                      # {{{1
   >>> import trstools as T
   >>> r1 = T.rule("f(x,h(x)) -> f(x,x)")
   >>> r2 = T.rule("f(g(x),y) -> f(x,h(y))")
-  >>> r3 = T.rule("g(h(x))   -> h(g(x)))")
+  >>> r3 = T.rule("g(h(x))   -> h(g(x))")
 
   >>> for u, v in T.critical_pairs([r1, r2, r3]):
   ...   print("[ %-16s, %-12s ]" % (u, v))
